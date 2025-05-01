@@ -118,20 +118,19 @@ impl Home {
                         .push(
                             text_editor(&content).size(16).padding(10)
                             .on_action(move |edit| Message::Update(index as i32, edit)))
-                        .push(horizontal_space())
-                        .push(button("Save").on_press(Message::SaveButton))
                         .align_y(Alignment::Center).spacing(10),
                 ).padding(10)
                 .align_x(Alignment::Center)
                 .align_y(Alignment::Center)
                 .width(Length::Fill));
+            
                 
                 // row![container(text_input(&content, &self.filters[index]).size(16)).padding(10).width(Length::Fill).style(container::rounded_box), container(button("Save").on_press(Message::SaveButton)).width(Length::Shrink),]);
         }
 
-        window = window.push(row![horizontal_space(), button("+").on_press(Message::Add)]);
+        window = window.push(row![button("Save").on_press(Message::SaveButton), horizontal_space(), button("+").on_press(Message::Add)]);
 
-        
+        window = window.push(text(format!("{:?}",self.filters)));
         window.into()
     
     }
@@ -140,6 +139,7 @@ impl Home {
         match message {
             Message::Enable(status) => {
                         self.enabled = status;
+                        Task::none()
                     },
             Message::Tick => {
                         if self.time != prelude::Local::now() {
@@ -149,40 +149,50 @@ impl Home {
                                 self.num += 1;
                             }
                         }
+                        Task::none()
                     },
             Message::Increment => {
                         self.num += 1;
+                        Task::none()
                     },
             Message::Decrement => {
                         self.num -= 1;
+                        Task::none()
                     },
             Message::FileOpened(Ok(content)) => {
                         self.filters.extend(content.as_str().split('\n').map(|x| x.to_owned()));
                         self.contents.extend(content.as_str().split('\n').map(|x| text_editor::Content::with_text(x)));
+                        Task::none()
                         
                     }
             Message::FileOpened(Err(error)) => {
                         self.error = Some(error);
+                        Task::none()
                     }
             Message::SaveButton => {
-                        let _ = Task::perform(write(PathBuf::from(self.file.to_owned()), Vec::clone(&self.filters)), Message::Save);
+                        let temp = self.filters.iter().map(|x| x.trim().to_owned()).collect();
+                        Task::perform(write(PathBuf::from(self.file.to_owned()),temp ), Message::Save)
                     }
             Message::Save(Ok(())) => {
-                        self.filters.extend(self.filters.join("\n").as_str().split('\n').map(|x| x.to_owned()));
+                        // self.filters.extend(self.filters.join("\n").as_str().split('\n').map(|x| x.to_owned()));
+                        Task::none()
                     }
             Message::Save(Err(error)) => {
                         self.error = Some(error);
+                        Task::none()
                     }
             Message::Add => {
                         self.filters.push("".to_owned());
+                        self.contents.push(text_editor::Content::with_text(""));
+                        Task::none()
                     }
             Message::Update(num, new) => {
                         self.contents[num as usize].perform(new);
                         self.filters[num as usize] = self.contents[num as usize].text();
+                        Task::none()
                     },
-            Message::None => {}
-                };
-        Task::none()
+            Message::None => {Task::none()}
+                }
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -198,6 +208,7 @@ async fn read_lists(file: PathBuf) -> Result<Arc<String>, io::ErrorKind> {
 }
 
 async fn write(file: PathBuf, lists: Vec<String>) -> Result<(), io::ErrorKind> {
+    let _ = tokio::fs::File::create(&file).await.map_err(|err| err.kind())?;
     tokio::fs::write(&file, &lists.join("\n")).await.map_err(|err| err.kind())
 }
 
